@@ -8,11 +8,18 @@ class PreloadScene extends Phaser.Scene {
     this.load.image("background", "images/nyc_8Bit2.jpg");
     this.load.image("player", "images/Bus.png");
     this.load.image("coin", "images/coin.png");
-  }
+    this.load.image("car1", "images/car1.png");
+    this.load.image("car2", "images/car2.png");
+    this.load.image("car3", "images/car3.png");
 
+    //   Load the audio
+    this.load.audio("coin_sound", " audio/coinCollection.wav");
+    this.load.audio("car_crash", "audio/crash.wav");
+    this.load.audio("game_over_sound", "audio/game-over-deep-epic.wav");
+    this.load.audio("background_music", "audio/game-music-loop-8.wav");
+  }
   create() {
-    // Start the GameScene
-    this.scene.start("GameScene");
+    this.scene.start("StartScene");
   }
 }
 
@@ -22,6 +29,13 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // Create sound objects
+    this.coinSound = this.sound.add("coin_sound");
+    this.carCrashSound = this.sound.add("car_crash");
+    this.backgroundMusic = this.sound.add("background_music");
+
+    // Start playing the background sound in a loop
+    this.backgroundMusic.play({ loop: true });
     // Create a repeating background
     this.bg1 = this.add
       .tileSprite(0, 0, 800, 600, "background")
@@ -77,12 +91,20 @@ class GameScene extends Phaser.Scene {
       null,
       this
     );
+
+    // Create a group for cars
+    this.cars = this.physics.add.group();
+    this.nextCarAt = 0;
+
+    // Set up collision handler for cars
+    this.physics.add.collider(this.player, this.cars, this.endGame, null, this);
   }
 
   collectCoin(player, coin) {
     coin.disableBody(true, true);
     this.coinCounter++;
     this.coinCounterText.setText("Coins: " + this.coinCounter);
+    this.coinSound.play(); // Play the coin sound effect
   }
 
   update() {
@@ -100,21 +122,109 @@ class GameScene extends Phaser.Scene {
 
     // Spawn coins and move them towards the car
     if (this.time.now > this.nextCoinAt) {
-      this.nextCoinAt = this.time.now + 1000; // Adjust the time interval between coin spawns
-      const coinY = Phaser.Math.Between(550, 550); // Adjust the Y range for the coins
-      const coinX = Phaser.Math.Between(1, 1100); // Adjust the X range for the coins
-      const coin = this.coins.create(coinX, coinY, "coin");
-      coin.setScale(0.4);
-      coin.body.allowGravity = false; // Prevent the coin from being affected by gravit
-      coin.setVelocityX(-100); // Adjust the speed of the coins
+      this.nextCoinAt = this.time.now + 2000; // Adjust the time interval between coin spawns
+      const coinY = 560;
+      const coinX = Phaser.Math.Between(850, 1100); // Adjust the X range for the coins
+      const existingCoin = this.coins.children.entries.find(
+        (coin) => Math.abs(coin.x - coinX) < 50
+      );
+      if (!existingCoin) {
+        const coin = this.coins.create(coinX, coinY, "coin");
+        coin.setScale(0.2); // set the size of the car
+        coin.body.allowGravity = false; // Prevent the coin from being affected by gravity
+        coin.setVelocityX(-100); // Adjust the speed of the coins
+      }
     }
-    this.player.setVelocityX(12);
+
+    // Spawn cars randomly
+    if (this.time.now > this.nextCarAt) {
+      this.nextCarAt = this.time.now + 2000; // Adjust the time interval between car spawns
+      const carY = 580;
+      const carX = Phaser.Math.Between(850, 1100); // Adjust the X range for the coins
+      const carModel = Phaser.Math.Between(1, 3); // Randomly select a car model (1, 2, or 3)
+      const carImage = "car" + carModel;
+
+      const existingCar = this.cars.children.entries.find(
+        // the lication of all cars created
+        (car) => Math.abs(car.x - carX) < 50
+      );
+      if (!existingCar) {
+        const car = this.cars.create(carX, carY, carImage); //if there is not an existing car at said location than create a new car there
+        car.setScale(0.2);
+        car.body.allowGravity = false;
+        car.setVelocityX(-150); // Adjust the speed of the cars
+        car.setSize(car.width * 0.4, car.height * 0.5); // Set a custom hitbox for the car
+      }
+    }
+
+    // Remove cars that have left the screen
+    this.cars.children.iterate((car) => {
+      if (car.x < -car.width) {
+        car.disableBody(true, true);
+      }
+    });
   }
 
   jump() {
     if (this.player.body.blocked.down) {
       this.player.setVelocityY(-600);
+      this.player.setVelocityX(40); // Move slightly forward when jumping
+    } else {
+      this.player.setVelocityX(0); // Reset horizontal velocity when not jumping
     }
+  }
+
+  // Function to end the game when the player hits a car
+  endGame() {
+    this.carCrashSound.play(); // Play the car crash sound effect
+    this.backgroundMusic.stop();
+    this.scene.start("EndScene");
+  }
+}
+// Add this new class for the StartScene
+class StartScene extends Phaser.Scene {
+  constructor() {
+    super({ key: "StartScene" });
+  }
+
+  create() {
+    // Add the background and the player
+    this.add.image(400, 300, "background");
+    this.add.image(100, 550, "player").setScale(0.35);
+
+    // Add a Play Now button
+    const playButton = this.add.text(350, 300, "Play Now", {
+      fontSize: "32px",
+      fill: "#000",
+    });
+    playButton.setInteractive();
+    playButton.on("pointerdown", () => {
+      this.scene.start("GameScene");
+    });
+
+    // Display the button to press on laptops or computers only
+    if (!this.sys.game.device.os.desktop) {
+      this.add.text(350, 350, "Press SPACE to jump", {
+        fontSize: "16px",
+        fill: "#000",
+      });
+    }
+  }
+}
+class EndScene extends Phaser.Scene {
+  constructor() {
+    super({ key: "EndScene" });
+  }
+
+  create() {
+    this.add.text(300, 300, "Game Over", {
+      fontSize: "32px",
+      fill: "#000",
+    });
+
+    this.input.keyboard.once("keydown-SPACE", () => {
+      this.scene.start("GameScene");
+    });
   }
 }
 
@@ -129,7 +239,9 @@ const config = {
       debug: false,
     },
   },
-  scene: [PreloadScene, GameScene],
+  //scene: [PreloadScene, GameScene, EndScene],
+  // Update the 'scene' property in the config object
+  scene: [PreloadScene, StartScene, GameScene, EndScene],
 };
 
 const game = new Phaser.Game(config);
